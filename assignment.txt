@@ -1,0 +1,687 @@
+---------------------------------------- CREATE EXTERNAL TABLE ---------------------------------
+
+-- IMPORTANT: BEFORE CREATING ANY TABLE, MAKE SURE YOU RUN THIS COMMAND 
+ADD JAR /opt/cloudera/parcels/CDH/lib/hive/lib/hive-hcatalog-core-1.1.0-cdh5.11.2.jar;
+
+-- DROP THE TABLE FIRST 
+drop table nyc_yellow_taxi;
+
+-- CREATE EXTERNAL TABLE
+create external table if not exists nyc_yellow_taxi(VendorID int, tpep_pickup_datetime  timestamp,
+tpep_dropoff_datetime timestamp, Passenger_count int, Trip_distance double, RateCodeID int, Store_and_fwd_flag string, 
+PULocationID int, DOLocationID int, Payment_type int, Fare_amount double, Extra double, MTA_tax double, 
+Tip_amount double, Tolls_amount double, Improvement_surcharge double, Total_amount double) 
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ','
+STORED AS TEXTFILE
+location '/common_folder/nyc_taxi_data/';
+
+---------------------------------------- EDA FOR ALL COLUMNS -----------------------------------------
+
+-- AFTER CREATING TABLE LET'S CHECK TOP 10 ROWS FIRST TO SEE DATA DISTRIBUTION
+select * from nyc_yellow_taxi order by tpep_pickup_datetime limit 10;
+-- Result - in above command we have seen that first row contains null or invalid entry
+
+-- LET'S CHECK TOTAL NUMBER OF ROWS IN DATA SET
+select count(*) as total_no_of_rows from nyc_yellow_taxi;
+-- Result - total number of rows = 1174570
+
+-- LET'S CHECK NUMBER OF ROWS FOR EACH VENDOR
+select VendorID as vendor_id, count(*) as number_of_records
+from nyc_yellow_taxi
+group by VendorID;
+-- Result 
+-- vendor_id	number_of_records
+--   NULL	       1
+--    2	            647183
+--    1	            527386 
+-- Above we can see that our dataset has 2 vendor's and vendor 2 has more entries in our dataset
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN tpep_pickup_datetime
+select VendorID as vendor_id ,min(tpep_pickup_datetime) as min_date,  max(tpep_pickup_datetime) as max_date from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	     min_date	                max_date
+--   NULL	        NULL	                  NULL
+--    2	  	2003-01-01 00:58:00.0	    2018-01-01 00:04:00.0
+--    1	  	2017-11-01 00:00:00.0	    2017-12-31 23:59:00.0
+
+-- Conclusion : here we have seen that data has null values and vendor 2 has data distributed from 2003 to 2018, where as for 
+-- vendor 1 we have data only for 2017. For our analysis we need 2017 november and december data only, 
+-- so we will filter data based on this column later on.
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN tpep_dropoff_datetime
+select VendorID as vendor_id, min(tpep_dropoff_datetime) as min_date,  max(tpep_dropoff_datetime) as max_date from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	      min_date	              max_date
+--    NULL	        NULL	                NULL
+--	2	2003-01-01 01:28:00.0	2018-01-01 23:31:00.0
+--	1	2017-11-01 00:03:00.0	2019-04-24 19:21:00.0
+
+-- Conclusion : here we have seen that data has null values and vendor 2 has data distributed from 2003 to 2018, where as for 
+-- vendor 1 we have data distributed from 2017 to 2019. For our analysis we need 2017 november and december data only, 
+-- so we will filter data based on this column later on.
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN Passenger_count
+select VendorID as vendor_id, min(Passenger_count) as min_passenger,  max(Passenger_count) as max_passenger from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	min_passenger	max_passenger
+--    NULL	     NULL	    NULL
+--	2	      0	            9
+--	1	      0	            7
+
+-- Conclusion : here we have seen that data has null values and both the vendors have 0 passenger count which falls under erroneous rows 
+-- as 0 passenger count means no one was traveling. So as per our assumption min passenger count can be 1 but not 0.
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN Trip_distance
+select VendorID as vendor_id, min(Trip_distance) as min_distance,  max(Trip_distance) as max_distance from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	min_distance	max_distance
+--    NULL	    NULL	     NULL
+--	2	      0	            126.41
+--	1	      0	            102.4
+
+-- Conclusion : here we have seen that data has null values and both the vendors have 0 trip distance which falls under erroneous rows 
+-- as 0 trip distance means there was no trip made. And here we are only considering trip data not cancelled status.
+-- Trip distance 0 can be possible if user has cancelled the cab but here we are not considering the cancelled trips.
+-- So trip distance can't be 0, it should be greater then 0. We will filter our data based on this column later on.
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN PULocationID
+select VendorID as vendor_id, min(PULocationID) as min_pu_location_id,  max(PULocationID) as max_pu_location_id from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	 min_pu_location_id	max_pu_location_id
+--    NULL	        NULL	                NULL
+--	2	         1	                265
+--  	1	         1	                265
+
+-- Conclusion : Here everything looks okay. It is just a id column , so we won't do any filtration based on this column.
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN DOLocationID
+select VendorID as vendor_id, min(DOLocationID) as min_do_location_id,  max(DOLocationID) as max_do_location_id from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	min_do_location_id	max_do_location_id
+--    NULL	      NULL	                NULL
+--     2	       1	                265
+--     1	       1	                265
+
+-- Conclusion : Here everything looks okay. It is just a id column , so we won't do any filtration based on this column.
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN RateCodeID
+select VendorID as vendor_id, min(RateCodeID) as min_rate_code_id,  max(RateCodeID) as max_rate_code_id from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	min_rate_code_id	max_rate_code_id
+--    NULL	      NULL	             NULL
+--     2	       1	              99
+--     1	       1	              99
+
+-- Conclusion : Here max value is 99 for both the vendor's which is a error because according to data dictionary 
+-- RateCodeID can vary from 1 to 6 only and any value which is not between 1 and 6 is error in this column. 
+-- So we have to treat all erroneous rows. We will filter data based on this column later on.
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN Payment_type
+select VendorID as vendor_id, min(Payment_type) as min_payment_type,  max(Payment_type) as max_payment_type from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	min_payment_type	max_payment_type
+--     NULL	     NULL	            NULL
+--	2	      1               	     4
+--	1	      1	                     4
+
+-- Conclusion : Here based on data dictionary everything looks okay and we won't do filtration based on this column.
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN Fare_amount
+select VendorID as vendor_id, min(Fare_amount) as min_fare_amount,  max(Fare_amount) as max_fare_amount from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	min_fare_amount	    max_fare_amount
+--    NULL	      NULL	            NULL
+--	2	      -200	            488.5
+--	1            	 0	            650
+
+-- Conclusion : Here we can see that there is a negative value in this column for vendor 2 which is a error. 
+-- Fare amount can never be negative although it can be 0 in some scenarios like payment_type 3 (No charge).
+-- So we will filter our data based on this column to remove erroneous rows.
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN Tip_amount
+select VendorID as vendor_id, min(Tip_amount) as min_tip_amount,  max(Tip_amount) as max_tip_amount from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	min_tip_amount	max_tip_amount
+--     NULL	     NULL	     NULL
+--	 2	    -1.16	      450
+--	 1	        0	      265
+
+-- Conclusion : Here we can see that there is a negative value in this column for vendor id 2 which is a error. 
+-- Tip amount can never be negative although it can be 0 in some scenarios like payment_type 3 (No charge) or cash payment. 
+-- So we will filter our data based on this column to remove erroneous rows.
+
+ -- DATA DISTRIBUTION CHECK FOR COLUMN Tolls_amount
+select VendorID as vendor_id, min(Tolls_amount) as min_tolls_amount,  max(Tolls_amount) as max_tolls_amount from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	min_tolls_amount	max_tolls_amount
+--     NULL	      NULL	            NULL
+--	2	      -5.76	            90
+--	1	       0	            895.89
+
+-- Conclusion : Here we can see that there is a negative value in this column for vendor id 2 which is a error. 
+-- Toll amount can never be negative although it can be 0 in some scenarios like if user has not crossed any toll. 
+-- So we will filter our data based on this column to remove erroneous rows.
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN Total_amount
+select VendorID as vendor_id, min(Total_amount) as min_total_amount,  max(Total_amount) as max_total_amount from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	min_total_amount	max_total_amount
+--     NULL	     NULL	            NULL
+--	2	     -200.8	            490.3
+--	1	      0	                    928.19
+
+-- Conclusion : Here we can see that there is a negative value in this column for vendor id 2 which is a error. 
+-- Total amount can never be negative although it can be 0 in some scenarios like no charge trip (payment_type = 3). 
+-- So we will filter our data based on this column to remove erroneous rows.
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN MTA_tax 
+-- FOR MTA_TAX LET'S FIRST SEE ALL THE VALUES WITH COUNT FOR ERROR ANALYSIS
+SELECT
+  MTA_tax,
+  COUNT(*) AS `num`
+FROM
+  nyc_yellow_taxi
+GROUP BY
+  MTA_tax
+  
+-- Result 
+-- mta_tax	    num
+--   NULL	    1
+--  -0.5	    544
+--   0	            5197
+--   0.5	    1168824
+--   3	            3
+--   11.4	    1
+
+-- LET'S CHECK MTA_TAX DISTRIBUTION BASED ON VENDOR ID AS WELL
+select VendorID as vendor_id, min(MTA_tax) as min_mta_tax,  max(MTA_tax) as max_mta_tax from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	min_mta_tax	    max_mta_tax
+--    NULL	    NULL	        NULL
+--	2	    -0.5	        3
+--	1	       0	        11.4
+
+-- Conclusion : Here based on data distribution seen above and data dictionary provided, we have concluded that 
+-- MTA_Tax can be 0 or $0.50. All the other values are error here. MTA_Tax should be 0.5 if levied else it should be 0. 
+-- So we will filter our data based on this column to remove erroneous rows.
+
+-- DATA DISTRIBUTION CHECK FOR COLUMN Extra 
+-- FOR Extra LET'S FIRST SEE ALL THE VALUES WITH COUNT FOR ERROR ANALYSIS
+SELECT
+  Extra,
+  COUNT(*) AS `num`
+FROM
+  nyc_yellow_taxi
+GROUP BY
+  Extra
+-- Result
+--      extra	    num
+--	 NULL	    1
+--	-10.6	    1
+--	-4.5	    5
+--	-1	    87
+--	-0.5	    193
+--	 0	    631872
+--	 0.3	    36
+--	 0.5	    363455
+--	 1	    174386
+--	 1.5	    2
+--	 2	    1
+--	 4.5	    4502
+--	 4.8	    1
+--	 0.8	    15
+--	 1.3	    13
+
+-- LET'S CHECK Extra DISTRIBUTION BASED ON VENDOR ID AS WELL
+select VendorID as vendor_id, min(Extra) as min_extra,  max(Extra) as max_extra from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	min_extra	  max_extra
+--    NULL	   NULL	            NULL
+--	 2	   -4.5	            4.8
+--	 1	   -10.6	    4.5
+
+-- Conclusion : Here based on data distribution seen above and data dictionary provided, we have concluded that 
+-- Extra can be 0 , $0.50 or $1. All the other values are error here. Extra should be 0 if not levied 
+-- else it should be 0.5 or 1 based on rush hour or late night charges. Both the charges (0.5 and 1) cannot be applied at the same time.
+-- So we will filter our data based on this column to remove erroneous rows.
+  
+-- DATA DISTRIBUTION CHECK FOR COLUMN Improvement_surcharge 
+-- FOR Improvement_surcharge LET'S FIRST SEE ALL THE VALUES WITH COUNT FOR ERROR ANALYSIS
+SELECT
+  Improvement_surcharge,
+  COUNT(*) AS `num`
+FROM
+  nyc_yellow_taxi
+GROUP BY
+  Improvement_surcharge
+-- Result
+-- improvement_surcharge	num
+--	    NULL	        1
+--	    -0.3	        558
+--	     0	                287
+--	     0.3	        1173720
+--	     1	                4
+
+-- LET'S CHECK Extra DISTRIBUTION BASED ON VENDOR ID AS WELL
+select VendorID as vendor_id, min(Improvement_surcharge) as min_improvement_surcharge,  max(Improvement_surcharge) as max_improvement_surcharge 
+from nyc_yellow_taxi
+group by VendorID;
+-- Result
+-- vendor_id	min_improvement_surcharge	max_improvement_surcharge
+--     NULL	            NULL	                    NULL
+--	  2	            -0.3	                    1
+--	  1	              0                      	    0.3
+
+-- Conclusion : Here based on data distribution seen above and data dictionary provided, we have concluded that 
+-- Improvement_surcharge can be 0 or 0.3. All the other values are error here. Improvement_surcharge should be 0.3 if levied 
+-- else it should be 0. Our analysis is for 2017 and Improvement_surcharge is levied from 2015, 
+-- therefore it can be 0 only for exceptional cases other wise it will always be applicable.
+-- So we will filter our data based on this column to remove erroneous rows.
+
+-- LET'S CHECK NUMBER OF ROWS WITH tpep_dropoff_datetime EQUAL TO tpep_pickup_datetime
+select count(*) as num_of_records
+from nyc_yellow_taxi
+where tpep_pickup_datetime=tpep_dropoff_datetime;
+-- Result
+-- num_of_records - 6482
+
+-- Conclusion : Here we have seen that 6482 records have tpep_dropoff_datetime equal to tpep_pickup_datetime which is a error,
+-- as it implies that trip has not happened and even if trip is canceled these two times cannot be exactly equal because booking
+-- and cancelling a trip has some time difference. So we will filter our data based on this condition.
+
+------------------------- NOW LET'S CREATE A CLEAN, ORC PARTITIONED TABLE ------------------------------------------
+
+-- IMPORTANT: BEFORE PARTITIONING ANY TABLE, MAKE SURE YOU RUN THESE COMMANDS 
+SET hive.exec.max.dynamic.partitions=100000;
+SET hive.exec.max.dynamic.partitions.pernode=100000;
+
+-- FIRST DROP THE TABLE 
+drop table nyc_yellow_taxi_partition_orc;
+
+-- THEN CREATE EXTERNAL TABLE - CLEAN, ORC PARTITIONED TABLE 
+create external table if not exists nyc_yellow_taxi_partition_orc
+(VendorID int, tpep_pickup_datetime  timestamp,
+tpep_dropoff_datetime timestamp, Passenger_count int, Trip_distance double, RateCodeID int, Store_and_fwd_flag string, 
+PULocationID int, DOLocationID int, Payment_type int, Fare_amount double, Extra double, MTA_tax double, 
+Tip_amount double, Tolls_amount double, Improvement_surcharge double, Total_amount double)
+partitioned by (mnth int , vendor int)
+clustered by (tpep_pickup_datetime) into 4 buckets
+stored as orc location '/user/hive/warehouse/sachita_chauhan'
+tblproperties ("orc.compress"="SNAPPY");
+
+-- INSERT DATA INTO ORC PARTITIONED TABLE 
+-- We will insert data based on all data quality checks which we have performed above.
+-- While inserting data in orc partitioned table we will filter out all the erroneous rows.
+insert overwrite table nyc_yellow_taxi_partition_orc partition(mnth, vendor)
+select VendorID, tpep_pickup_datetime, tpep_dropoff_datetime, Passenger_count, Trip_distance,
+RateCodeID, Store_and_fwd_flag, PULocationID, DOLocationID, Payment_type, Fare_amount, 
+Extra, MTA_tax, Tip_amount, Tolls_amount, Improvement_surcharge, Total_amount,
+month(tpep_pickup_datetime) as mnth, VendorID as vendor
+from nyc_yellow_taxi where 
+year(tpep_pickup_datetime) = 2017 and month(tpep_pickup_datetime) in  (11,12)
+and year(tpep_dropoff_datetime) = 2017 and month(tpep_dropoff_datetime) in  (11,12)
+and Passenger_count>0 
+and Trip_distance>0 
+and RateCodeID in (1,2,3,4,5,6)
+and Fare_amount>=0 
+and Extra in (0,0.5,1) 
+and MTA_tax in (0,0.5) 
+and Tip_amount>=0
+and Tolls_amount>=0 
+and Improvement_surcharge in (0,0.3)
+and Total_amount>=0 
+and tpep_pickup_datetime != tpep_dropoff_datetime;
+
+--------------------------------- CROSS CHECK DATA AFTER CREATING CLEAN, ORC PARTITIONED TABLE -------------------------
+
+-- Here we will check if we have successfully removed all the erroneous rows or not.
+
+-- AFTER CREATING TABLE LET'S CHECK TOP 10 ROWS FIRST TO SEE DATA DISTRIBUTION
+select * from nyc_yellow_taxi_partition_orc order by tpep_pickup_datetime limit 10;
+
+-- LET'S CHECK TOTAL NUMBER OF ROWS AFTER CLEANUP
+select count(*) as total_no_of_rows from nyc_yellow_taxi_partition_orc;
+-- Result total number of rows = 1153715
+
+-- LET'S CHECK NUMBER OF ROWS FOR EACH VENDOR AFTER CLEANUP
+select VendorID as vendor_id, count(*) as number_of_records
+from nyc_yellow_taxi_partition_orc
+group by VendorID;
+-- Result 
+-- vendor_id	number_of_records
+--	   1	        513876
+--	   2	        639839 
+
+-- LET'S CHECK MIN AND MAX VALUES IN COLUMN tpep_pickup_datetime AFTER CLEANUP
+select VendorID as vendor_id ,min(tpep_pickup_datetime) as min_date,  max(tpep_pickup_datetime) as max_date 
+from nyc_yellow_taxi_partition_orc
+group by VendorID;
+-- Result
+-- vendor_id	   min_date	                max_date
+--	   1	  2017-11-01 00:00:00.0	    2017-12-31 23:56:00.0
+--	   2	  2017-11-01 00:00:00.0	    2017-12-31 23:54:00.0
+
+-- LET'S CHECK MIN AND MAX VALUES IN COLUMN tpep_dropoff_datetime AFTER CLEANUP
+select VendorID as vendor_id, min(tpep_dropoff_datetime) as min_date,  max(tpep_dropoff_datetime) as max_date 
+from nyc_yellow_taxi_partition_orc
+group by VendorID;
+-- Result
+-- vendor_id	   min_date	              max_date
+--	   1	2017-11-01 00:03:00.0	2017-12-31 23:59:00.0
+--	   2	2017-11-01 00:03:00.0	2017-12-31 23:59:00.0
+
+-- LET'S CHECK MIN AND MAX VALUES IN COLUMN Passenger_count AFTER CLEANUP
+select VendorID as vendor_id, min(Passenger_count) as min_passenger,  max(Passenger_count) as max_passenger 
+from nyc_yellow_taxi_partition_orc
+group by VendorID;
+-- Result
+-- vendor_id	min_passenger	max_passenger
+--	   1	         1	            7
+--	   2	         1	            7
+
+-- LET'S CHECK MIN AND MAX VALUES IN COLUMN RateCodeID AFTER CLEANUP
+select VendorID as vendor_id, min(RateCodeID) as min_rate_code_id,  max(RateCodeID) as max_rate_code_id 
+from nyc_yellow_taxi_partition_orc
+group by VendorID;
+-- Result
+-- vendor_id	min_rate_code_id	max_rate_code_id
+--	  1	             1	                5
+--	  2	             1	                6
+
+-- LET'S CHECK MIN AND MAX VALUES IN COLUMN Fare_amount AFTER CLEANUP
+select VendorID as vendor_id, min(Fare_amount) as min_fare_amount,  max(Fare_amount) as max_fare_amount 
+from nyc_yellow_taxi_partition_orc
+group by VendorID;
+-- Result
+-- vendor_id	min_fare_amount	    max_fare_amount
+--	  1	          0	                400
+--	  2            	  0	                419
+
+-- LET'S CHECK MIN AND MAX VALUES IN COLUMN Tip_amount AFTER CLEANUP
+select VendorID as vendor_id, min(Tip_amount) as min_tip_amount,  max(Tip_amount) as max_tip_amount 
+from nyc_yellow_taxi_partition_orc
+group by VendorID;
+-- Result
+-- vendor_id	min_tip_amount	max_tip_amount
+--	   1	         0	        153
+--	   2	         0	        140.02
+
+-- LET'S CHECK MIN AND MAX VALUES IN COLUMN Tolls_amount AFTER CLEANUP
+select VendorID as vendor_id, min(Tolls_amount) as min_tolls_amount,  max(Tolls_amount) as max_tolls_amount 
+from nyc_yellow_taxi_partition_orc
+group by VendorID;
+-- Result
+-- vendor_id	min_tolls_amount	max_tolls_amount
+--	   1	         0	                895.89
+--	   2	         0	                90
+
+-- LET'S CHECK MIN AND MAX VALUES IN COLUMN Total_amount AFTER CLEANUP
+select VendorID as vendor_id, min(Total_amount) as min_total_amount,  max(Total_amount) as max_total_amount 
+from nyc_yellow_taxi_partition_orc
+group by VendorID;
+-- Result
+-- vendor_id	min_total_amount	max_total_amount
+--	  1	             0	                928.19
+--	  2	             0	                419.8
+
+-- LET'S CHECK MIN AND MAX VALUES IN COLUMN MTA_tax AFTER CLEANUP
+select VendorID as vendor_id, min(MTA_tax) as min_mta_tax,  max(MTA_tax) as max_mta_tax 
+from nyc_yellow_taxi_partition_orc
+group by VendorID;
+-- Result
+-- vendor_id	    min_mta_tax	    max_mta_tax
+--	  1	             0	            0.5
+--	  2	             0	            0.5
+
+-- LET'S CHECK MIN AND MAX VALUES IN COLUMN Extra AFTER CLEANUP
+select VendorID as vendor_id, min(Extra) as min_extra,  max(Extra) as max_extra 
+from nyc_yellow_taxi_partition_orc
+group by VendorID;
+-- Result
+-- vendor_id	    min_extra	  max_extra
+--	 1	           0	        1
+--	 2	           0	        1
+
+-- LET'S CHECK MIN AND MAX VALUES IN COLUMN Improvement_surcharge AFTER CLEANUP
+select VendorID as vendor_id, min(Improvement_surcharge) as min_improvement_surcharge,  max(Improvement_surcharge) as max_improvement_surcharge 
+from nyc_yellow_taxi_partition_orc
+group by VendorID;
+-- Result
+-- vendor_id	min_improvement_surcharge	max_improvement_surcharge
+--	  1	                 0	                        0.3
+--	  2	                 0                      	0.3
+
+-- LET'S CHECK NUMBER OF ROWS WITH tpep_dropoff_datetime EQUAL TO tpep_pickup_datetime AFTER CLEANUP
+select count(*) as num_of_records
+from nyc_yellow_taxi_partition_orc
+where tpep_pickup_datetime = tpep_dropoff_datetime;
+-- Rsult - num_of_records = 0
+
+-- Conclusion : Based on above results we can conclude that there is no erroneous rows in orc partitioned table.
+
+-- Now we can start our Analysis questions
+
+------------------------------------ Analysis-I --------------------------------
+
+-- Question 1: Compare the overall average fare per trip for November and December.
+select month(tpep_pickup_datetime) as month_name, avg(Fare_amount) as average_fare_amount 
+from nyc_yellow_taxi_partition_orc
+group by month(tpep_pickup_datetime);
+-- Result
+-- month_name	    average_fare_amount
+-- 11 (november)    12.905196089607887
+-- 12 (december)    12.696041210401306
+
+-- Conclusion : average fare per trip in both the months is almost same. 
+-- November average fare per trip is slightly more then december.
+
+-- Question 2: Explore the â€˜number of passengers per tripâ€™ - how many trips are made by each level of 
+-- â€˜Passenger_countâ€™? Do most people travel solo or with other people?
+select Passenger_count as no_of_passenger , count(*) as no_of_trips
+from nyc_yellow_taxi_partition_orc
+group by Passenger_count;
+-- Result
+-- no_of_passenger	no_of_trips
+--	    1	          817128
+--	    2	          174804
+--	    3	          50187
+--	    4	          24689
+--	    5	          54027
+--	    6	          32877
+--	    7	          3
+
+-- Conclusion : From above results we can conclude that most people travel solo.
+
+-- Question 3: Which is the most preferred mode of payment?
+select Payment_type as mode_of_payment , count(*) as frequency
+from nyc_yellow_taxi_partition_orc
+group by Payment_type;
+-- Result
+-- mode_of_payment	frequency
+--	    1	         779167
+--	    2	         368691
+--	    3	         4551
+--	    4	         1306
+
+-- Conclusion : From above results we can conclude that most preferred mode of payment is payment_type 1, 
+-- which is credit card payment
+
+-- Question 4 : What is the average tip paid per trip? Compare the average tip 
+-- with the 25th, 50th and 75th percentiles and comment whether the â€˜average tipâ€™ 
+-- is a representative statistic (of the central tendency) of â€˜tip amount paidâ€™. 
+-- Hint: You may use percentile_approx(DOUBLE col, p): Returns an approximate pth 
+-- percentile of a numeric column (including floating point types) in the group.
+select avg(Tip_amount) as average_tip , percentile_approx(Tip_amount, 0.25) as 25th_percentile_tip,
+percentile_approx(Tip_amount, 0.50) as 50th_percentile_tip, percentile_approx(Tip_amount, 0.75) as 75th_percentile_tip
+from nyc_yellow_taxi_partition_orc;
+-- Result  
+--   average_tip	   25th_percentile_tip	 50th_percentile_tip   75th_percentile_tip
+--   1.826146405307651	        0	                1.36	             2.45
+
+-- Conclusion : From above results we can conclude that â€˜average tipâ€™ 
+-- is a representative statistic (of the central tendency) of â€˜tip amount paidâ€™
+-- because difference between 50th percentile and average tip is very small and 
+-- difference between 75th percentile and average tip is significant but not that big.
+ 
+-- Question 5 : Explore the â€˜Extraâ€™ (charge) variable - 
+-- what fraction of total trips have an extra charge is levied?
+select count(*) as total_trips
+from nyc_yellow_taxi_partition_orc;
+-- Result - total_trips = 1153715
+
+select count(*) as total_trips_extra_charge_leived
+from nyc_yellow_taxi_partition_orc
+where Extra > 0;
+-- Result - total_trips_extra_charge_leived = 532334
+
+-- Conclusion : What fraction of total trips have an extra charge is levied = total_trips/total_trips_extra_charge_leived
+-- = 532334/1153715 = 0.4614 = 46.14 %
+
+------------------------------------------------ Analysis-II --------------------------------------
+
+-- Question 1 : What is the correlation between the number of passengers on any given trip, 
+-- and the tip paid per trip? Do multiple travellers tip more compared to solo travellers? 
+-- Hint: Use CORR(Col_1, Col_2)
+select CORR(Passenger_count,Tip_amount) as cor_value from nyc_yellow_taxi_partition_orc where tip_amount>0;
+-- Result - correlation value = 0.01184247030461885
+
+select Passenger_count , count(*) as trip_count, avg(tip_amount) as avg_tip from 
+nyc_yellow_taxi_partition_orc group by passenger_count;
+-- Result 
+-- 	passenger_count	    trip_count	    avg_tip
+--	    1	             817128	    1.83579039024472
+--	    2	             174804	    1.8276180178943697
+--	    3	             50187	    1.743213780461083
+--	    4	             24689	    1.6047296366803026
+--	    5	             54027	    1.859153571362481
+--	    6	             32877	    1.8169483225355103
+--	    7	             3	            5.2299999999999995
+
+--Conclusion : Here we have observed that there is a low correlation between passenger count and 
+-- tip paid. There is not direct or inverse relation between increase in passengers and tip_amount.
+-- For passenger count 7 there is a sudden increase in tip amount which may be a outlier
+-- as the number of trips are also very less for passenger count 7.
+
+-- Question 2 : Segregate the data into five segments of â€˜tip paidâ€™: 
+-- [0-5), [5-10), [10-15) , [15-20) and >=20. Calculate the percentage share of each bucket 
+-- (i.e. the fraction of trips falling in each bucket).
+select 
+    tip_bucket,
+count(*) as bucket_size,
+(count(*)*100)/1153715 as bucket_percent_share
+from
+        (
+        select	
+        if(tip_amount>=0 AND tip_amount<5 , '0-5',
+        if(tip_amount>=5 AND tip_amount<10,'5-10',
+        if(tip_amount>=10 AND tip_amount<15,'10-15',
+        if(tip_amount>=15 AND tip_amount<20,'15-20','>20')
+        )
+        )
+        ) as tip_bucket
+        from
+        nyc_yellow_taxi_partition_orc
+        ) as agg_bucket
+group by
+tip_bucket;
+-- Result
+-- tip_bucket	bucket_size 	  bucket_percent_share
+--	0-5	    1066078	    92.40392991336682
+--      10-15	    19412	    1.6825645848411437
+--	15-20	    2160	    0.18722128081891976
+--	5-10	    65041	    5.637527465621925
+--	>20	    1024	    0.08875675535119158
+
+-- Conclusion : From above results we can conclude that more than 92% people pay tip between 0-5 and 
+-- number of trips made is also maximum for 0-5 bucket.
+
+
+-- Question 3 : Which month has a greater average â€˜speedâ€™ - November or December? 
+-- Note that the variable â€˜speedâ€™ will have to be derived from other metrics. 
+-- Hint: You have columns for distance and time.
+select month(tpep_pickup_datetime) as month_name,
+avg(trip_distance/(
+(UNIX_TIMESTAMP(tpep_dropoff_datetime)-UNIX_TIMESTAMP(tpep_pickup_datetime))/(60*60))) as average_of_speed
+from nyc_yellow_taxi_partition_orc
+group by month(tpep_pickup_datetime);
+-- Result
+--  month_name	  average_of_speed
+-- 11(november)   10.970994082133984
+-- 12(december)	  11.070711799182302
+
+-- Conclusion : From above results we can conclude that average of speed is nearly same for both the months. 
+-- December's average of speed is slightly more then the november's average of speed.
+
+-- Question 4 - Analyse the average speed of the most happening days of the year, 
+-- i.e. 31st December (New yearâ€™s eve) and 25th December (Christmas) 
+-- and compare it with the overall average. 
+select 
+day(tpep_pickup_datetime) as days, 
+sum(trip_distance)/sum((UNIX_TIMESTAMP(tpep_dropoff_datetime)-UNIX_TIMESTAMP(tpep_pickup_datetime))/(60*60)) as average_speed
+from nyc_yellow_taxi_partition_orc
+where month(tpep_pickup_datetime)=12
+and	day(tpep_pickup_datetime) in (25,31)
+group by
+day(tpep_pickup_datetime);
+--  Result
+--  days	            average_speed
+--  25(Christmas)	    12.216285819685341
+--  31(New yearâ€™s eve)      14.613440007464257
+
+
+select 
+sum(trip_distance)/sum((UNIX_TIMESTAMP(tpep_dropoff_datetime)-UNIX_TIMESTAMP(tpep_pickup_datetime))/(60*60)) as average_speed_overall
+from nyc_yellow_taxi_partition_orc;
+-- Result - average_speed_overall = 9.77624531557215
+
+-- Conclusion : From above results we can conclude that the average speed on 25th december (Christmas) 
+-- and 31st december (New yearâ€™s eve) is more then the overall average speed in november and december.
+
+
+------------------------------------------ OVERALL COMPARISON OF VENDOR 1 AND VENDOR 2 -----------------------
+
+
+-- Vendor_id: 1                                         Vendor_id: 2
+-- number_of_records : 527386                           number_of_records : 647183
+-- min_pickup_date : 2017-11-01 00:00:00.0              min_pickup_date : 2003-01-01 00:58:00.0
+-- max_pickup_date : 2017-12-31 23:59:00.0              max_pickup_date : 2018-01-01 00:04:00.0
+-- min_dropoff_date : 2017-11-01 00:03:00.0             min_dropoff_date : 2003-01-01 01:28:00.0
+-- max_dropoff_date : 2019-04-24 19:21:00.0             max_dropoff_date : 2018-01-01 23:31:00.0
+-- min_passenger : 0                                    min_passenger : 0
+-- max_passenger : 7                                    max_passenger : 9
+-- min_distance : 0                                     min_distance : 0 
+-- max_distance : 102.4                                 max_distance : 126.41
+-- min_rate_code_id : 1                                 min_rate_code_id : 1
+-- max_rate_code_id : 99                                max_rate_code_id : 99
+-- min_fare_amount : 0                                  min_fare_amount : -200
+-- max_fare_amount : 650                                max_fare_amount : 488.5
+-- min_tip_amount : 0                                   min_tip_amount : -1.16
+-- max_tip_amount : 265                                 max_tip_amount : 450
+-- min_tolls_amount : 0                                 min_tolls_amount : -5.76
+-- max_tolls_amount : 895.89                            max_tolls_amount : 90
+-- min_total_amount : 0                                 min_total_amount : -200.8
+-- max_total_amount : 928.19                            max_total_amount : 490.3
+-- min_mta_tax : 0                                      min_mta_tax : -0.5
+-- max_mta_tax : 11.4                                   max_mta_tax : 3
+-- min_extra : -10.6                                    min_extra : -4.5
+-- max_extra : 4.5                                      max_extra : 4.8
+-- min_improvement_surcharge : 0                        min_improvement_surcharge : -0.3
+-- max_improvement_surcharge : 0.3                      max_improvement_surcharge : 1
+
+-- Conclusion : based on above comparison we can conclude that both the vendor are making mistakes in 
+-- providing the records. But vendor 2 is making more mistakes as compared to vendor 1 as you can see above.
